@@ -1,0 +1,20 @@
+{
+    "name": "get-sheet",
+    "version": "1.0.0",
+    "type": "module",
+    "bin": {
+        "getsheet": "./src/cli.mjs"
+    },
+    "dependencies": {
+        "googleapis": "^146.0.0"
+    },
+    "scripts": {
+        "test": "node --experimental-vm-modules node_modules/.bin/jest",
+        "test:coverage:src": "node --experimental-vm-modules node_modules/.bin/jest --coverage --collectCoverageFrom='src/**/*.mjs'",
+        "test:file": "node --experimental-vm-modules node_modules/.bin/jest"
+    },
+    "devDependencies": {
+        "@jest/globals": "^30.0.0",
+        "jest": "^30.0.0"
+    }
+}
