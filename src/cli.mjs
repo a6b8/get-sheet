@@ -63,6 +63,8 @@ Commands:
   format              Format cells (bold, colors, alignment, font size)
   condformat          Add conditional formatting (color scale or rules)
   freeze              Freeze rows and/or columns
+  hide                Hide rows or columns
+  unhide              Unhide rows or columns
   tabs                List all tabs
   addtab              Add a new tab
   chart               Create a chart from data range
@@ -129,6 +131,12 @@ Options (freeze):
                         At least one of --rows or --cols is required
                         Use 0 to unfreeze: --rows 0
 
+Options (hide / unhide):
+  --tab <name>          Tab name (required)
+  --rows <range>        Row range, e.g. "2:5" (1-based, inclusive)
+  --cols <range>        Column range, e.g. "B:C" (letter-based, inclusive)
+                        One of --rows or --cols is required
+
 Options (addtab):
   --name <name>         Name for the new tab
 
@@ -177,6 +185,10 @@ Examples:
   getsheet freeze --tab Sheet1 --rows 1
   getsheet freeze --tab Sheet1 --rows 1 --cols 1
   getsheet freeze --tab Sheet1 --rows 0 --cols 0
+  getsheet hide --tab Sheet1 --rows 2:5
+  getsheet hide --tab Sheet1 --cols B:C
+  getsheet unhide --tab Sheet1 --rows 2:5
+  getsheet unhide --tab Sheet1 --cols B:C
   getsheet chart --tab Sheet1 --range A1:B4 --type BAR --title "Scores"
 `
 
@@ -303,6 +315,22 @@ const run = async () => {
         const eq = values[ 'eq' ]
         const bold = values[ 'bold' ]
         const result = await GetSheetCli.condFormat( { tab, range, scale, min, max, gt, lt, eq, between, bg, bold, cwd } )
+        output( { result } )
+
+        return
+    }
+
+    if( command === 'hide' ) {
+        const { tab, rows, cols } = values
+        const result = await GetSheetCli.hide( { tab, rows, cols, cwd } )
+        output( { result } )
+
+        return
+    }
+
+    if( command === 'unhide' ) {
+        const { tab, rows, cols } = values
+        const result = await GetSheetCli.unhide( { tab, rows, cols, cwd } )
         output( { result } )
 
         return

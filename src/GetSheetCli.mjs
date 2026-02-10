@@ -783,6 +783,20 @@ class GetSheetCli {
     }
 
 
+    static async hide( { tab, rows, cols, cwd } ) {
+        const { result } = await GetSheetCli.#toggleVisibility( { tab, rows, cols, cwd, hidden: true } )
+
+        return result
+    }
+
+
+    static async unhide( { tab, rows, cols, cwd } ) {
+        const { result } = await GetSheetCli.#toggleVisibility( { tab, rows, cols, cwd, hidden: false } )
+
+        return result
+    }
+
+
     static async freeze( { tab, rows, cols, cwd } ) {
         const { status, error } = GetSheetCli.validationFreeze( { tab, rows, cols } )
         if( !status ) {
@@ -1144,6 +1158,45 @@ class GetSheetCli {
     }
 
 
+    static validationHide( { tab, rows, cols } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( rows === undefined && cols === undefined ) {
+            struct['error'] = 'One of --rows or --cols is required'
+
+            return struct
+        }
+
+        if( rows !== undefined && cols !== undefined ) {
+            struct['error'] = 'Only one of --rows or --cols can be specified'
+
+            return struct
+        }
+
+        if( rows !== undefined && !/^\d+:\d+$/.test( rows ) ) {
+            struct['error'] = '--rows must be in format "start:end", e.g. "2:5"'
+
+            return struct
+        }
+
+        if( cols !== undefined && !/^[A-Za-z]+:[A-Za-z]+$/.test( cols ) ) {
+            struct['error'] = '--cols must be in format "start:end", e.g. "B:C"'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
     static async #loadConfig( { cwd } ) {
         const globalConfigPath = join( GetSheetCli.#gsheetDir(), 'config.json' )
         const { data: globalConfig } = await GetSheetCli.#readJson( { filePath: globalConfigPath } )
@@ -1310,6 +1363,117 @@ class GetSheetCli {
             } )
 
         return { colors }
+    }
+
+
+    static async #toggleVisibility( { tab, rows, cols, cwd, hidden } ) {
+        const { status, error } = GetSheetCli.validationHide( { tab, rows, cols } )
+        if( !status ) {
+            const result = GetSheetCli.#error( { error } )
+
+            return { result }
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            const result = GetSheetCli.#error( { error: configError } )
+
+            return { result }
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                const result = GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+
+                return { result }
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+
+            let dimension
+            let startIndex
+            let endIndex
+
+            if( rows ) {
+                const parts = rows.split( ':' )
+                dimension = 'ROWS'
+                startIndex = parseInt( parts[ 0 ] ) - 1
+                endIndex = parseInt( parts[ 1 ] )
+            } else {
+                const colToIndex = ( col ) => {
+                    const index = col.toUpperCase()
+                        .split( '' )
+                        .reduce( ( acc, char ) => {
+                            const val = acc * 26 + char.charCodeAt( 0 ) - 64
+
+                            return val
+                        }, 0 ) - 1
+
+                    return index
+                }
+
+                const parts = cols.split( ':' )
+                dimension = 'COLUMNS'
+                startIndex = colToIndex( parts[ 0 ] )
+                endIndex = colToIndex( parts[ 1 ] ) + 1
+            }
+
+            const visibilityRequest = {
+                'updateDimensionProperties': {
+                    'properties': {
+                        'hiddenByUser': hidden
+                    },
+                    'range': {
+                        'sheetId': sheetId,
+                        'dimension': dimension,
+                        'startIndex': startIndex,
+                        'endIndex': endIndex
+                    },
+                    'fields': 'hiddenByUser'
+                }
+            }
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [ visibilityRequest ]
+                }
+            } )
+
+            const action = hidden ? 'Hidden' : 'Unhidden'
+            const rangeLabel = rows ? `rows ${rows}` : `columns ${cols}`
+            const result = {
+                'status': true,
+                'message': `${action} ${rangeLabel} in "${tab}"`,
+                'tab': tab,
+                'dimension': dimension,
+                'startIndex': startIndex,
+                'endIndex': endIndex,
+                'hidden': hidden
+            }
+
+            return { result }
+        } catch( err ) {
+            const action = hidden ? 'Hide' : 'Unhide'
+            const result = GetSheetCli.#error( { error: `${action} failed: ${err.message}` } )
+
+            return { result }
+        }
     }
 
 
