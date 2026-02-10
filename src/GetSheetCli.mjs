@@ -783,6 +783,87 @@ class GetSheetCli {
     }
 
 
+    static async freeze( { tab, rows, cols, cwd } ) {
+        const { status, error } = GetSheetCli.validationFreeze( { tab, rows, cols } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+            const gridProperties = {}
+            const fields = []
+
+            if( rows !== undefined ) {
+                gridProperties['frozenRowCount'] = parseInt( rows )
+                fields.push( 'gridProperties.frozenRowCount' )
+            }
+
+            if( cols !== undefined ) {
+                gridProperties['frozenColumnCount'] = parseInt( cols )
+                fields.push( 'gridProperties.frozenColumnCount' )
+            }
+
+            const freezeRequest = {
+                'updateSheetProperties': {
+                    'properties': {
+                        'sheetId': sheetId,
+                        'gridProperties': gridProperties
+                    },
+                    'fields': fields.join( ',' )
+                }
+            }
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [ freezeRequest ]
+                }
+            } )
+
+            const parts = []
+            if( rows !== undefined ) { parts.push( `${rows} row(s)` ) }
+            if( cols !== undefined ) { parts.push( `${cols} column(s)` ) }
+
+            const result = {
+                'status': true,
+                'message': `Froze ${parts.join( ' and ' )} in "${tab}"`,
+                'tab': tab,
+                'frozenRows': rows !== undefined ? parseInt( rows ) : null,
+                'frozenCols': cols !== undefined ? parseInt( cols ) : null
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Freeze failed: ${err.message}` } )
+        }
+    }
+
+
     static async info( { cwd } ) {
         const globalConfigPath = join( GetSheetCli.#gsheetDir(), 'config.json' )
         const { data: globalConfig } = await GetSheetCli.#readJson( { filePath: globalConfigPath } )
@@ -1020,6 +1101,39 @@ class GetSheetCli {
 
         if( between !== undefined && !/^-?\d+(\.\d+)?:-?\d+(\.\d+)?$/.test( between ) ) {
             struct['error'] = '--between must be in format "min:max", e.g. "8:10"'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationFreeze( { tab, rows, cols } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( rows === undefined && cols === undefined ) {
+            struct['error'] = 'At least one of --rows or --cols is required'
+
+            return struct
+        }
+
+        if( rows !== undefined && ( isNaN( parseInt( rows ) ) || parseInt( rows ) < 0 ) ) {
+            struct['error'] = '--rows must be a non-negative number, e.g. "1"'
+
+            return struct
+        }
+
+        if( cols !== undefined && ( isNaN( parseInt( cols ) ) || parseInt( cols ) < 0 ) ) {
+            struct['error'] = '--cols must be a non-negative number, e.g. "1"'
 
             return struct
         }

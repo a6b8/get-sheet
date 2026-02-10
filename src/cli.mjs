@@ -62,6 +62,7 @@ Commands:
   delete              Delete rows or columns from a tab
   format              Format cells (bold, colors, alignment, font size)
   condformat          Add conditional formatting (color scale or rules)
+  freeze              Freeze rows and/or columns
   tabs                List all tabs
   addtab              Add a new tab
   chart               Create a chart from data range
@@ -121,6 +122,13 @@ Options (condformat):
     --bg <hex>          Background color for matching cells (required)
     --bold              Bold text for matching cells (optional)
 
+Options (freeze):
+  --tab <name>          Tab name (required)
+  --rows <n>            Number of rows to freeze (e.g. 1 for header)
+  --cols <n>            Number of columns to freeze (e.g. 1 for first col)
+                        At least one of --rows or --cols is required
+                        Use 0 to unfreeze: --rows 0
+
 Options (addtab):
   --name <name>         Name for the new tab
 
@@ -166,6 +174,9 @@ Examples:
   getsheet condformat --tab Sheet1 --range B2:N44 --scale "red:green"
   getsheet condformat --tab Sheet1 --range O2:O44 --gt 100 --bg "#4caf50"
   getsheet condformat --tab Sheet1 --range B2:N44 --between "8:10" --bg "#c8e6c9" --bold
+  getsheet freeze --tab Sheet1 --rows 1
+  getsheet freeze --tab Sheet1 --rows 1 --cols 1
+  getsheet freeze --tab Sheet1 --rows 0 --cols 0
   getsheet chart --tab Sheet1 --range A1:B4 --type BAR --title "Scores"
 `
 
@@ -292,6 +303,14 @@ const run = async () => {
         const eq = values[ 'eq' ]
         const bold = values[ 'bold' ]
         const result = await GetSheetCli.condFormat( { tab, range, scale, min, max, gt, lt, eq, between, bg, bold, cwd } )
+        output( { result } )
+
+        return
+    }
+
+    if( command === 'freeze' ) {
+        const { tab, rows, cols } = values
+        const result = await GetSheetCli.freeze( { tab, rows, cols, cwd } )
         output( { result } )
 
         return
