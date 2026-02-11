@@ -490,8 +490,8 @@ class GetSheetCli {
     }
 
 
-    static async format( { tab, range, bold, bg, color, fontsize, align, cwd } ) {
-        const { status, error } = GetSheetCli.validationFormat( { tab, range, bold, bg, color, fontsize, align } )
+    static async format( { tab, range, bold, bg, color, fontsize, align, font, cwd } ) {
+        const { status, error } = GetSheetCli.validationFormat( { tab, range, bold, bg, color, fontsize, align, font } )
         if( !status ) {
             return GetSheetCli.#error( { error } )
         }
@@ -564,6 +564,14 @@ class GetSheetCli {
                 fieldParts.push( 'userEnteredFormat.horizontalAlignment' )
             }
 
+            if( font ) {
+                if( !userEnteredFormat['textFormat'] ) {
+                    userEnteredFormat['textFormat'] = {}
+                }
+                userEnteredFormat['textFormat']['fontFamily'] = font
+                fieldParts.push( 'userEnteredFormat.textFormat.fontFamily' )
+            }
+
             const formatRequest = {
                 'repeatCell': {
                     'range': {
@@ -593,6 +601,7 @@ class GetSheetCli {
             if( color ) { appliedFormats.push( `color:${color}` ) }
             if( fontsize ) { appliedFormats.push( `fontsize:${fontsize}` ) }
             if( align ) { appliedFormats.push( `align:${align}` ) }
+            if( font ) { appliedFormats.push( `font:${font}` ) }
 
             const result = {
                 'status': true,
@@ -609,8 +618,8 @@ class GetSheetCli {
     }
 
 
-    static async condFormat( { tab, range, scale, min, max, gt, lt, eq, between, bg, bold, cwd } ) {
-        const { status, error } = GetSheetCli.validationCondFormat( { tab, range, scale, gt, lt, eq, between, bg } )
+    static async condFormat( { tab, range, scale, min, max, gt, lt, eq, between, formula, bg, bold, cwd } ) {
+        const { status, error } = GetSheetCli.validationCondFormat( { tab, range, scale, gt, lt, eq, between, formula, bg } )
         if( !status ) {
             return GetSheetCli.#error( { error } )
         }
@@ -730,6 +739,11 @@ class GetSheetCli {
                             { 'userEnteredValue': parts[ 0 ] },
                             { 'userEnteredValue': parts[ 1 ] }
                         ]
+                    }
+                } else if( formula !== undefined ) {
+                    condition = {
+                        'type': 'CUSTOM_FORMULA',
+                        'values': [ { 'userEnteredValue': formula } ]
                     }
                 }
 
@@ -878,6 +892,165 @@ class GetSheetCli {
     }
 
 
+    static async filter( { tab, range, cwd } ) {
+        const { status, error } = GetSheetCli.validationFilter( { tab, range } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+            const { startCol, startRow, endCol, endRow } = GetSheetCli.#parseRange( { range } )
+
+            const filterRequest = {
+                'setBasicFilter': {
+                    'filter': {
+                        'range': {
+                            'sheetId': sheetId,
+                            'startRowIndex': startRow,
+                            'startColumnIndex': startCol,
+                            'endRowIndex': endRow,
+                            'endColumnIndex': endCol
+                        }
+                    }
+                }
+            }
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [ filterRequest ]
+                }
+            } )
+
+            const result = {
+                'status': true,
+                'message': `Filter applied to ${tab}!${range}`,
+                'tab': tab,
+                'range': range
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Filter failed: ${err.message}` } )
+        }
+    }
+
+
+    static async colWidth( { tab, cols, width, cwd } ) {
+        const { status, error } = GetSheetCli.validationColWidth( { tab, cols, width } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+
+            const normalizedCols = cols.includes( ':' ) ? cols : `${cols}:${cols}`
+            const colParts = normalizedCols.split( ':' )
+
+            const colToIndex = ( col ) => {
+                const index = col.toUpperCase()
+                    .split( '' )
+                    .reduce( ( acc, char ) => {
+                        const val = acc * 26 + char.charCodeAt( 0 ) - 64
+
+                        return val
+                    }, 0 ) - 1
+
+                return index
+            }
+
+            const startIndex = colToIndex( colParts[ 0 ] )
+            const endIndex = colToIndex( colParts[ 1 ] ) + 1
+
+            const resizeRequest = {
+                'updateDimensionProperties': {
+                    'properties': {
+                        'pixelSize': parseInt( width )
+                    },
+                    'range': {
+                        'sheetId': sheetId,
+                        'dimension': 'COLUMNS',
+                        'startIndex': startIndex,
+                        'endIndex': endIndex
+                    },
+                    'fields': 'pixelSize'
+                }
+            }
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [ resizeRequest ]
+                }
+            } )
+
+            const result = {
+                'status': true,
+                'message': `Set column width of ${cols} to ${width}px in "${tab}"`,
+                'tab': tab,
+                'cols': cols,
+                'width': parseInt( width ),
+                'startIndex': startIndex,
+                'endIndex': endIndex
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Column width failed: ${err.message}` } )
+        }
+    }
+
+
     static async info( { cwd } ) {
         const globalConfigPath = join( GetSheetCli.#gsheetDir(), 'config.json' )
         const { data: globalConfig } = await GetSheetCli.#readJson( { filePath: globalConfigPath } )
@@ -1016,7 +1189,7 @@ class GetSheetCli {
     }
 
 
-    static validationFormat( { tab, range, bold, bg, color, fontsize, align } ) {
+    static validationFormat( { tab, range, bold, bg, color, fontsize, align, font } ) {
         const struct = { 'status': false, 'error': null }
 
         if( tab === undefined ) {
@@ -1031,9 +1204,9 @@ class GetSheetCli {
             return struct
         }
 
-        const hasFormat = bold !== undefined || bg !== undefined || color !== undefined || fontsize !== undefined || align !== undefined
+        const hasFormat = bold !== undefined || bg !== undefined || color !== undefined || fontsize !== undefined || align !== undefined || font !== undefined
         if( !hasFormat ) {
-            struct['error'] = 'At least one format option required: --bold, --bg, --color, --fontsize, --align'
+            struct['error'] = 'At least one format option required: --bold, --bg, --color, --fontsize, --align, --font'
 
             return struct
         }
@@ -1063,7 +1236,7 @@ class GetSheetCli {
     }
 
 
-    static validationCondFormat( { tab, range, scale, gt, lt, eq, between, bg } ) {
+    static validationCondFormat( { tab, range, scale, gt, lt, eq, between, formula, bg } ) {
         const struct = { 'status': false, 'error': null }
 
         if( tab === undefined ) {
@@ -1080,14 +1253,26 @@ class GetSheetCli {
 
         const hasCondition = gt !== undefined || lt !== undefined || eq !== undefined || between !== undefined
 
-        if( scale === undefined && !hasCondition ) {
-            struct['error'] = 'Either --scale or a condition (--gt, --lt, --eq, --between) is required'
+        if( scale === undefined && !hasCondition && formula === undefined ) {
+            struct['error'] = 'Either --scale, --formula, or a condition (--gt, --lt, --eq, --between) is required'
 
             return struct
         }
 
         if( scale !== undefined && hasCondition ) {
             struct['error'] = 'Cannot combine --scale with conditions (--gt, --lt, --eq, --between)'
+
+            return struct
+        }
+
+        if( scale !== undefined && formula !== undefined ) {
+            struct['error'] = 'Cannot combine --scale with --formula'
+
+            return struct
+        }
+
+        if( formula !== undefined && hasCondition ) {
+            struct['error'] = 'Cannot combine --formula with conditions (--gt, --lt, --eq, --between)'
 
             return struct
         }
@@ -1101,8 +1286,8 @@ class GetSheetCli {
             }
         }
 
-        if( hasCondition && bg === undefined ) {
-            struct['error'] = '--bg is required when using conditions. Provide background color, e.g. "#4caf50"'
+        if( ( hasCondition || formula !== undefined ) && bg === undefined ) {
+            struct['error'] = '--bg is required when using conditions or --formula. Provide background color, e.g. "#4caf50"'
 
             return struct
         }
@@ -1148,6 +1333,72 @@ class GetSheetCli {
 
         if( cols !== undefined && ( isNaN( parseInt( cols ) ) || parseInt( cols ) < 0 ) ) {
             struct['error'] = '--cols must be a non-negative number, e.g. "1"'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationFilter( { tab, range } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( range === undefined ) {
+            struct['error'] = '--range is required. e.g. A1:D100'
+
+            return struct
+        }
+
+        if( !/^[A-Z]+\d+:[A-Z]+\d+$/.test( range ) ) {
+            struct['error'] = '--range must be in format "A1:D100"'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationColWidth( { tab, cols, width } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( cols === undefined ) {
+            struct['error'] = '--cols is required. e.g. "A" or "A:C"'
+
+            return struct
+        }
+
+        if( !/^[A-Za-z]+$/.test( cols ) && !/^[A-Za-z]+:[A-Za-z]+$/.test( cols ) ) {
+            struct['error'] = '--cols must be a single column (e.g. "A") or range (e.g. "A:C")'
+
+            return struct
+        }
+
+        if( width === undefined ) {
+            struct['error'] = '--width is required. Provide pixel value, e.g. 150'
+
+            return struct
+        }
+
+        if( isNaN( parseInt( width ) ) || parseInt( width ) <= 0 ) {
+            struct['error'] = '--width must be a positive number (pixels)'
 
             return struct
         }
