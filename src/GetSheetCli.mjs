@@ -286,6 +286,73 @@ class GetSheetCli {
     }
 
 
+    static async tabColor( { tab, color, cwd } ) {
+        const { status, error } = GetSheetCli.validationTabColor( { tab, color } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+            const { red, green, blue } = GetSheetCli.#hexToRgb( { hex: color } )
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [
+                        {
+                            'updateSheetProperties': {
+                                'properties': {
+                                    'sheetId': sheetId,
+                                    'tabColorStyle': {
+                                        'rgbColor': { red, green, blue }
+                                    }
+                                },
+                                'fields': 'tabColorStyle'
+                            }
+                        }
+                    ]
+                }
+            } )
+
+            const result = {
+                'status': true,
+                'message': `Tab "${tab}" color set to ${color}`,
+                'tab': tab,
+                'color': color
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Tab color failed: ${err.message}` } )
+        }
+    }
+
+
     static async chart( { tab, range, type, title, cwd } ) {
         if( tab === undefined ) {
             return GetSheetCli.#error( { error: '--tab is required. Provide tab name' } )
@@ -490,8 +557,8 @@ class GetSheetCli {
     }
 
 
-    static async format( { tab, range, bold, bg, color, fontsize, align, font, cwd } ) {
-        const { status, error } = GetSheetCli.validationFormat( { tab, range, bold, bg, color, fontsize, align, font } )
+    static async format( { tab, range, bold, bg, color, fontsize, align, wrap, font, cwd } ) {
+        const { status, error } = GetSheetCli.validationFormat( { tab, range, bold, bg, color, fontsize, align, wrap, font } )
         if( !status ) {
             return GetSheetCli.#error( { error } )
         }
@@ -564,6 +631,13 @@ class GetSheetCli {
                 fieldParts.push( 'userEnteredFormat.horizontalAlignment' )
             }
 
+            if( wrap ) {
+                const wrapStrategies = { 'wrap': 'WRAP', 'clip': 'CLIP', 'overflow': 'OVERFLOW_CELL' }
+                const strategy = wrapStrategies[ wrap.toLowerCase() ] || 'WRAP'
+                userEnteredFormat['wrapStrategy'] = strategy
+                fieldParts.push( 'userEnteredFormat.wrapStrategy' )
+            }
+
             if( font ) {
                 if( !userEnteredFormat['textFormat'] ) {
                     userEnteredFormat['textFormat'] = {}
@@ -601,6 +675,7 @@ class GetSheetCli {
             if( color ) { appliedFormats.push( `color:${color}` ) }
             if( fontsize ) { appliedFormats.push( `fontsize:${fontsize}` ) }
             if( align ) { appliedFormats.push( `align:${align}` ) }
+            if( wrap ) { appliedFormats.push( `wrap:${wrap}` ) }
             if( font ) { appliedFormats.push( `font:${font}` ) }
 
             const result = {
@@ -793,6 +868,82 @@ class GetSheetCli {
             return result
         } catch( err ) {
             return GetSheetCli.#error( { error: `Conditional format failed: ${err.message}` } )
+        }
+    }
+
+
+    static async clearCondFormat( { tab, cwd } ) {
+        const { status, error } = GetSheetCli.validationClearCondFormat( { tab } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties,sheets.conditionalFormats'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+            const conditionalFormats = sheetMeta['conditionalFormats'] || []
+
+            if( conditionalFormats.length === 0 ) {
+                const result = {
+                    'status': true,
+                    'message': `No conditional formatting rules found on "${tab}"`,
+                    'tab': tab,
+                    'deleted': 0
+                }
+
+                return result
+            }
+
+            const requests = conditionalFormats
+                .map( ( _rule, index ) => {
+                    const request = {
+                        'deleteConditionalFormatRule': {
+                            'sheetId': sheetId,
+                            'index': 0
+                        }
+                    }
+
+                    return request
+                } )
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': { requests }
+            } )
+
+            const result = {
+                'status': true,
+                'message': `Deleted ${conditionalFormats.length} conditional formatting rule(s) from "${tab}"`,
+                'tab': tab,
+                'deleted': conditionalFormats.length
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Clear conditional format failed: ${err.message}` } )
         }
     }
 
@@ -1051,6 +1202,84 @@ class GetSheetCli {
     }
 
 
+    static async rowHeight( { tab, rows, height, cwd } ) {
+        const { status, error } = GetSheetCli.validationRowHeight( { tab, rows, height } )
+        if( !status ) {
+            return GetSheetCli.#error( { error } )
+        }
+
+        const { config, error: configError } = await GetSheetCli.#loadConfig( { cwd } )
+        if( !config ) {
+            return GetSheetCli.#error( { error: configError } )
+        }
+
+        const { sheets, spreadsheet } = config
+
+        try {
+            const metaResponse = await sheets.spreadsheets.get( {
+                'spreadsheetId': spreadsheet,
+                'fields': 'sheets.properties'
+            } )
+
+            const { data: metaData } = metaResponse
+            const sheetMeta = metaData['sheets']
+                .find( ( s ) => {
+                    const matches = s['properties']['title'] === tab
+
+                    return matches
+                } )
+
+            if( !sheetMeta ) {
+                return GetSheetCli.#error( { error: `Tab "${tab}" not found` } )
+            }
+
+            const sheetId = sheetMeta['properties']['sheetId']
+
+            const normalizedRows = rows.includes( ':' ) ? rows : `${rows}:${rows}`
+            const rowParts = normalizedRows.split( ':' )
+
+            const startIndex = parseInt( rowParts[ 0 ] ) - 1
+            const endIndex = parseInt( rowParts[ 1 ] )
+
+            const resizeRequest = {
+                'updateDimensionProperties': {
+                    'properties': {
+                        'pixelSize': parseInt( height )
+                    },
+                    'range': {
+                        'sheetId': sheetId,
+                        'dimension': 'ROWS',
+                        'startIndex': startIndex,
+                        'endIndex': endIndex
+                    },
+                    'fields': 'pixelSize'
+                }
+            }
+
+            await sheets.spreadsheets.batchUpdate( {
+                'spreadsheetId': spreadsheet,
+                'requestBody': {
+                    'requests': [ resizeRequest ]
+                }
+            } )
+
+            const result = {
+                'status': true,
+                'message': `Set row height of ${rows} to ${height}px in "${tab}"`,
+                'tab': tab,
+                'rows': rows,
+                'height': parseInt( height ),
+                'startIndex': startIndex,
+                'endIndex': endIndex
+            }
+
+            return result
+        } catch( err ) {
+            return GetSheetCli.#error( { error: `Row height failed: ${err.message}` } )
+        }
+    }
+
+
     static async info( { cwd } ) {
         const globalConfigPath = join( GetSheetCli.#gsheetDir(), 'config.json' )
         const { data: globalConfig } = await GetSheetCli.#readJson( { filePath: globalConfigPath } )
@@ -1189,7 +1418,7 @@ class GetSheetCli {
     }
 
 
-    static validationFormat( { tab, range, bold, bg, color, fontsize, align, font } ) {
+    static validationFormat( { tab, range, bold, bg, color, fontsize, align, wrap, font } ) {
         const struct = { 'status': false, 'error': null }
 
         if( tab === undefined ) {
@@ -1204,9 +1433,9 @@ class GetSheetCli {
             return struct
         }
 
-        const hasFormat = bold !== undefined || bg !== undefined || color !== undefined || fontsize !== undefined || align !== undefined || font !== undefined
+        const hasFormat = bold !== undefined || bg !== undefined || color !== undefined || fontsize !== undefined || align !== undefined || wrap !== undefined || font !== undefined
         if( !hasFormat ) {
-            struct['error'] = 'At least one format option required: --bold, --bg, --color, --fontsize, --align, --font'
+            struct['error'] = 'At least one format option required: --bold, --bg, --color, --fontsize, --align, --wrap, --font'
 
             return struct
         }
@@ -1399,6 +1628,87 @@ class GetSheetCli {
 
         if( isNaN( parseInt( width ) ) || parseInt( width ) <= 0 ) {
             struct['error'] = '--width must be a positive number (pixels)'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationRowHeight( { tab, rows, height } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( rows === undefined ) {
+            struct['error'] = '--rows is required. e.g. "7" or "7:43"'
+
+            return struct
+        }
+
+        if( !/^\d+$/.test( rows ) && !/^\d+:\d+$/.test( rows ) ) {
+            struct['error'] = '--rows must be a single row (e.g. "7") or range (e.g. "7:43")'
+
+            return struct
+        }
+
+        if( height === undefined ) {
+            struct['error'] = '--height is required. Provide pixel value, e.g. 21'
+
+            return struct
+        }
+
+        if( isNaN( parseInt( height ) ) || parseInt( height ) <= 0 ) {
+            struct['error'] = '--height must be a positive number (pixels)'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationTabColor( { tab, color } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
+
+            return struct
+        }
+
+        if( color === undefined ) {
+            struct['error'] = '--color is required. Provide hex color, e.g. "#4285f4"'
+
+            return struct
+        }
+
+        if( !/^#[0-9a-fA-F]{6}$/.test( color ) ) {
+            struct['error'] = '--color must be a valid hex color, e.g. "#4285f4"'
+
+            return struct
+        }
+
+        struct['status'] = true
+
+        return struct
+    }
+
+
+    static validationClearCondFormat( { tab } ) {
+        const struct = { 'status': false, 'error': null }
+
+        if( tab === undefined ) {
+            struct['error'] = '--tab is required. Provide tab name'
 
             return struct
         }

@@ -24,6 +24,7 @@ const args = parseArgs( {
         'color': { type: 'string' },
         'fontsize': { type: 'string' },
         'align': { type: 'string' },
+        'wrap': { type: 'string' },
         'font': { type: 'string' },
         'scale': { type: 'string' },
         'min': { type: 'string' },
@@ -34,6 +35,7 @@ const args = parseArgs( {
         'between': { type: 'string' },
         'formula': { type: 'string' },
         'width': { type: 'string' },
+        'height': { type: 'string' },
         'help': { type: 'boolean', short: 'h' }
     }
 } )
@@ -65,13 +67,16 @@ Commands:
   delete              Delete rows or columns from a tab
   format              Format cells (bold, colors, alignment, font size)
   condformat          Add conditional formatting (color scale or rules)
+  clearcondformat     Remove all conditional formatting from a tab
   freeze              Freeze rows and/or columns
   filter              Apply auto-filter to a range
   colwidth            Set column width in pixels
+  rowheight           Set row height in pixels
   hide                Hide rows or columns
   unhide              Unhide rows or columns
   tabs                List all tabs
   addtab              Add a new tab
+  tabcolor            Set tab color
   chart               Create a chart from data range
   info                Show service account email and setup info
 
@@ -110,6 +115,7 @@ Options (format):
   --color <hex>         Text color, e.g. "#333333"
   --fontsize <n>        Font size, e.g. 12
   --align <align>       Horizontal alignment: left, center, right
+  --wrap <mode>         Text wrapping: wrap, clip, overflow
   --font <name>         Font family, e.g. "Roboto Mono"
                         At least one format option is required
 
@@ -134,6 +140,9 @@ Options (condformat):
     --bg <hex>          Background color for matching cells (required)
     --bold              Bold text for matching cells (optional)
 
+Options (clearcondformat):
+  --tab <name>          Tab name (required)
+
 Options (freeze):
   --tab <name>          Tab name (required)
   --rows <n>            Number of rows to freeze (e.g. 1 for header)
@@ -150,6 +159,11 @@ Options (colwidth):
   --cols <range>        Column or column range, e.g. "A" or "A:C" (required)
   --width <pixels>      Width in pixels, e.g. 150 (required)
 
+Options (rowheight):
+  --tab <name>          Tab name (required)
+  --rows <range>        Row or row range, e.g. "7" or "7:43" (1-based, inclusive)
+  --height <pixels>     Height in pixels, e.g. 21 (required)
+
 Options (hide / unhide):
   --tab <name>          Tab name (required)
   --rows <range>        Row range, e.g. "2:5" (1-based, inclusive)
@@ -158,6 +172,10 @@ Options (hide / unhide):
 
 Options (addtab):
   --name <name>         Name for the new tab
+
+Options (tabcolor):
+  --tab <name>          Tab name (required)
+  --color <hex>         Tab color, e.g. "#4285f4" (required)
 
 Options (chart):
   --tab <name>          Tab with the data (required)
@@ -198,17 +216,22 @@ Examples:
   getsheet format --tab Sheet1 --range B2:O44 --align center
   getsheet format --tab Sheet1 --range A1:O1 --fontsize 12
   getsheet format --tab Sheet1 --range A1:O44 --font "Roboto Mono"
+  getsheet format --tab Sheet1 --range E7:E43 --wrap wrap
   getsheet condformat --tab Sheet1 --range B2:N44 --scale "red:yellow:green" --min 0 --max 10
   getsheet condformat --tab Sheet1 --range B2:N44 --scale "red:green"
   getsheet condformat --tab Sheet1 --range O2:O44 --gt 100 --bg "#4caf50"
   getsheet condformat --tab Sheet1 --range B2:N44 --between "8:10" --bg "#c8e6c9" --bold
   getsheet condformat --tab Sheet1 --range A2:A44 --formula "=A2>100" --bg "#ffcdd2"
+  getsheet clearcondformat --tab Sheet1
+  getsheet tabcolor --tab Sheet1 --color "#4285f4"
   getsheet freeze --tab Sheet1 --rows 1
   getsheet freeze --tab Sheet1 --rows 1 --cols 1
   getsheet freeze --tab Sheet1 --rows 0 --cols 0
   getsheet filter --tab Sheet1 --range A1:D100
   getsheet colwidth --tab Sheet1 --cols A --width 200
   getsheet colwidth --tab Sheet1 --cols A:C --width 150
+  getsheet rowheight --tab Sheet1 --rows 7:43 --height 21
+  getsheet rowheight --tab Sheet1 --rows 1 --height 30
   getsheet hide --tab Sheet1 --rows 2:5
   getsheet hide --tab Sheet1 --cols B:C
   getsheet unhide --tab Sheet1 --rows 2:5
@@ -303,6 +326,14 @@ const run = async () => {
         return
     }
 
+    if( command === 'tabcolor' ) {
+        const { tab, color } = values
+        const result = await GetSheetCli.tabColor( { tab, color, cwd } )
+        output( { result } )
+
+        return
+    }
+
     if( command === 'chart' ) {
         const { tab, range, title } = values
         const type = values[ 'type' ]
@@ -321,9 +352,9 @@ const run = async () => {
     }
 
     if( command === 'format' ) {
-        const { tab, range, bg, color, fontsize, align, font } = values
+        const { tab, range, bg, color, fontsize, align, wrap, font } = values
         const bold = values[ 'bold' ]
-        const result = await GetSheetCli.format( { tab, range, bold, bg, color, fontsize, align, font, cwd } )
+        const result = await GetSheetCli.format( { tab, range, bold, bg, color, fontsize, align, wrap, font, cwd } )
         output( { result } )
 
         return
@@ -339,6 +370,14 @@ const run = async () => {
         const eq = values[ 'eq' ]
         const bold = values[ 'bold' ]
         const result = await GetSheetCli.condFormat( { tab, range, scale, min, max, gt, lt, eq, between, formula, bg, bold, cwd } )
+        output( { result } )
+
+        return
+    }
+
+    if( command === 'clearcondformat' ) {
+        const { tab } = values
+        const result = await GetSheetCli.clearCondFormat( { tab, cwd } )
         output( { result } )
 
         return
@@ -379,6 +418,14 @@ const run = async () => {
     if( command === 'colwidth' ) {
         const { tab, cols, width } = values
         const result = await GetSheetCli.colWidth( { tab, cols, width, cwd } )
+        output( { result } )
+
+        return
+    }
+
+    if( command === 'rowheight' ) {
+        const { tab, rows, height } = values
+        const result = await GetSheetCli.rowHeight( { tab, rows, height, cwd } )
         output( { result } )
 
         return
