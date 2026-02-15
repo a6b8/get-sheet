@@ -89,6 +89,6 @@ describe( 'GetSheetCli.validationFormat - font parameter', () => {
         } )
 
         expect( result['status'] ).toBe( false )
-        expect( result['error'] ).toBe( 'At least one format option required: --bold, --bg, --color, --fontsize, --align, --font' )
+        expect( result['error'] ).toBe( 'At least one format option required: --bold, --bg, --color, --fontsize, --align, --wrap, --font' )
     } )
 } )
