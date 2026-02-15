@@ -1,3 +1,5 @@
+[![Test](https://img.shields.io/github/actions/workflow/status/a6b8/get-sheet/test-on-release.yml)]()
+[![Codecov](https://img.shields.io/codecov/c/github/a6b8/get-sheet)]()
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
 ```
@@ -8,15 +10,12 @@
 \____/\___/\__//____/_/ /_/\___/\___/\__/
 ```
 
-GetSheet is a Node.js CLI tool for reading, writing and managing Google Sheets from the terminal. It acts as a shared sketchpad between you and your AI agent — push tables, pull data, create charts.
+GetSheet is a Node.js CLI tool for reading, writing, formatting and managing Google Sheets from the terminal. It acts as a shared sketchpad between you and your AI agent — push tables, pull data, format cells, create charts.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/a6b8/get-sheet.git
-cd get-sheet
-npm install
-npm link
+npm install -g get-sheet
 
 getsheet init --credentials ~/keys/service-account.json --spreadsheet <SPREADSHEET_ID>
 getsheet info
@@ -25,33 +24,29 @@ getsheet tabs
 
 ## Features
 
-- **Read & write** - Push and pull data as 2D arrays
-- **Append rows** - Add data without overwriting existing content
-- **Tab management** - List tabs, create new tabs
-- **Charts** - Create BAR, LINE, PIE, COLUMN, AREA, SCATTER charts
-- **Two-tier config** - Global credentials in `~/.gsheet/`, per-project spreadsheet in `.gsheet/`
-- **Service account auth** - Uses Google service account JSON key
+- **Read & write** — Push and pull data as 2D arrays
+- **Append rows** — Add data without overwriting existing content
+- **Formatting** — Bold, colors, font size, alignment, text wrapping, font family
+- **Conditional formatting** — Color scales, value-based rules, custom formulas
+- **Tab management** — List, create, color, and delete tabs
+- **Layout control** — Freeze rows/cols, auto-filter, column widths, row heights, hide/unhide
+- **Charts** — BAR, LINE, PIE, COLUMN, AREA, SCATTER
+- **Two-tier config** — Global credentials in `~/.gsheet/`, per-project spreadsheet in `.gsheet/`
+- **Service account auth** — Uses Google service account JSON key
 
 ## Table of Contents
 
 - [Quickstart](#quickstart)
 - [Features](#features)
 - [Setup](#setup)
-- [CLI Usage](#cli-usage)
 - [Commands](#commands)
 - [Configuration](#configuration)
 - [License](#license)
 
 ## Setup
 
-```mermaid
-flowchart LR
-    A[Google Cloud Console] --> B[Enable Sheets API]
-    B --> C[Create Service Account]
-    C --> D[Download JSON Key]
-    D --> E[getsheet init]
-    E --> F[Share Sheet with Email]
-    F --> G[Ready]
+```
+Google Cloud Console → Enable Sheets API → Create Service Account → Download JSON Key → getsheet init → Share Sheet → Ready
 ```
 
 1. Create a Google Cloud project and enable the **Google Sheets API**
@@ -66,15 +61,7 @@ The Spreadsheet ID is in the URL:
 https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
 ```
 
-## CLI Usage
-
-GetSheet provides nine commands: `init`, `read`, `write`, `append`, `clear`, `tabs`, `addtab`, `chart`, and `info`.
-
-```bash
-getsheet <command> [options]
-```
-
-### Commands Overview
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -83,323 +70,108 @@ getsheet <command> [options]
 | `write` | Write data to a tab |
 | `append` | Append rows to a tab |
 | `clear` | Clear a range |
+| `delete` | Delete rows or columns from a tab |
+| `format` | Format cells (bold, colors, alignment, font size, wrapping, font) |
+| `condformat` | Add conditional formatting (color scale, conditions, formulas) |
+| `clearcondformat` | Remove all conditional formatting from a tab |
+| `freeze` | Freeze rows and/or columns |
+| `filter` | Apply auto-filter to a range |
+| `colwidth` | Set column width in pixels |
+| `rowheight` | Set row height in pixels |
+| `hide` | Hide rows or columns |
+| `unhide` | Unhide rows or columns |
 | `tabs` | List all tabs |
 | `addtab` | Create a new tab |
+| `tabcolor` | Set tab color |
 | `chart` | Create a chart from a data range |
 | `info` | Show service account email and setup info |
 
-## Commands
-
-### `init`
-
-First-time setup with credentials, or link a new spreadsheet to the current directory.
-
-**Usage**
+### Data Commands
 
 ```bash
-# First time (sets up credentials + spreadsheet)
-getsheet init --credentials <path> --spreadsheet <id>
-
-# Additional directories (credentials already configured)
-getsheet init --spreadsheet <id>
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--credentials` | string | Path to Google service account JSON | First time only |
-| `--spreadsheet` | string | Google Spreadsheet ID | Yes |
-
-**Returns**
-
-```json
-{
-    "status": true,
-    "message": "Initialized. Share your spreadsheet with: agent@project.iam.gserviceaccount.com",
-    "clientEmail": "agent@project.iam.gserviceaccount.com",
-    "spreadsheet": "1dXXCi8Dc5ZiMh8IvwUlN08jBz-yCFczF_qpQ3wU3Kdw"
-}
-```
-
-### `read`
-
-Read data from a spreadsheet tab.
-
-**Usage**
-
-```bash
-getsheet read [--tab <name>] [--range <range>]
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--tab` | string | Tab name (default: Sheet1) | No |
-| `--range` | string | Cell range, e.g. `A1:D10` (default: all) | No |
-
-**Examples**
-
-```bash
+# Read
 getsheet read --tab Sheet1
 getsheet read --tab Sheet1 --range A1:C10
-```
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "range": "Sheet1!A1:C4",
-    "rows": 4,
-    "data": [
-        ["Name", "Score", "Status"],
-        ["Alice", "95", "passed"],
-        ["Bob", "87", "passed"],
-        ["Charlie", "72", "pending"]
-    ]
-}
-```
-
-### `write`
-
-Write data to a spreadsheet tab. Overwrites existing content in the target range.
-
-**Usage**
-
-```bash
-getsheet write --tab <name> [--range <range>] --data '<json>'
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--tab` | string | Tab name | Yes |
-| `--range` | string | Start range, e.g. `A1` | No |
-| `--data` | string | 2D array as JSON string | Yes |
-
-**Examples**
-
-```bash
-# Write with headers
+# Write
 getsheet write --tab Sheet1 --data '[["Name","Score"],["Alice",95],["Bob",87]]'
-
-# Write to specific range
 getsheet write --tab Sheet1 --range A1 --data '[["Name","Score"]]'
-```
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "updatedRange": "Sheet1!A1:B3",
-    "updatedRows": 3,
-    "updatedColumns": 2,
-    "updatedCells": 6
-}
-```
-
-### `append`
-
-Append rows to the end of existing data in a tab.
-
-**Usage**
-
-```bash
-getsheet append --tab <name> --data '<json>'
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--tab` | string | Tab name | Yes |
-| `--data` | string | 2D array as JSON string | Yes |
-
-**Example**
-
-```bash
+# Append
 getsheet append --tab Sheet1 --data '[["Charlie",92]]'
-```
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "updatedRange": "Sheet1!A5:B5",
-    "updatedRows": 1,
-    "updatedColumns": 2,
-    "updatedCells": 2
-}
-```
-
-### `clear`
-
-Clear a range of cells in a tab.
-
-**Usage**
-
-```bash
-getsheet clear [--tab <name>] [--range <range>]
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--tab` | string | Tab name (default: Sheet1) | No |
-| `--range` | string | Cell range to clear (default: all) | No |
-
-**Example**
-
-```bash
+# Clear
 getsheet clear --tab Sheet1 --range B2:B10
+
+# Delete rows or columns
+getsheet delete --tab Sheet1 --rows 2:5
+getsheet delete --tab Sheet1 --cols B:C
 ```
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "clearedRange": "Sheet1!B2:B10"
-}
-```
-
-### `tabs`
-
-List all tabs in the spreadsheet.
-
-**Usage**
+### Formatting Commands
 
 ```bash
+# Bold, background, text color, font size, alignment, wrapping, font
+getsheet format --tab Sheet1 --range A1:O1 --bold --bg "#f0f0f0" --color "#333333"
+getsheet format --tab Sheet1 --range A1:O1 --fontsize 12
+getsheet format --tab Sheet1 --range B2:O44 --align center
+getsheet format --tab Sheet1 --range E7:E43 --wrap wrap
+getsheet format --tab Sheet1 --range A1:O44 --font "Roboto Mono"
+
+# Conditional formatting: color scale
+getsheet condformat --tab Sheet1 --range B2:N44 --scale "red:yellow:green"
+
+# Conditional formatting: value-based
+getsheet condformat --tab Sheet1 --range O2:O44 --gt 100 --bg "#4caf50"
+getsheet condformat --tab Sheet1 --range B2:N44 --between "8:10" --bg "#c8e6c9" --bold
+
+# Conditional formatting: custom formula
+getsheet condformat --tab Sheet1 --range A2:A44 --formula '=A2>100' --bg "#ffcdd2"
+
+# Clear all conditional formatting
+getsheet clearcondformat --tab Sheet1
+```
+
+### Layout Commands
+
+```bash
+# Freeze header row and first column
+getsheet freeze --tab Sheet1 --rows 1 --cols 1
+
+# Auto-filter
+getsheet filter --tab Sheet1 --range A1:D100
+
+# Column widths and row heights
+getsheet colwidth --tab Sheet1 --cols A:C --width 150
+getsheet rowheight --tab Sheet1 --rows 7:43 --height 21
+
+# Hide / unhide
+getsheet hide --tab Sheet1 --cols H:Z
+getsheet unhide --tab Sheet1 --rows 2:5
+```
+
+### Tab & Chart Commands
+
+```bash
+# List tabs
 getsheet tabs
-```
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "total": 2,
-    "tabs": [
-        {
-            "title": "Sheet1",
-            "index": 0,
-            "sheetId": 0,
-            "rowCount": 1000,
-            "columnCount": 26
-        },
-        {
-            "title": "Benchmarks",
-            "index": 1,
-            "sheetId": 123456789,
-            "rowCount": 1000,
-            "columnCount": 26
-        }
-    ]
-}
-```
-
-### `addtab`
-
-Create a new tab in the spreadsheet.
-
-**Usage**
-
-```bash
-getsheet addtab --name <name>
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--name` | string | Name for the new tab | Yes |
-
-**Example**
-
-```bash
+# Create tab and set color
 getsheet addtab --name Benchmarks
-```
+getsheet tabcolor --tab Benchmarks --color "#4285f4"
 
-**Returns**
-
-```json
-{
-    "status": true,
-    "message": "Tab \"Benchmarks\" created",
-    "name": "Benchmarks"
-}
-```
-
-### `chart`
-
-Create a chart embedded in the spreadsheet from a data range.
-
-**Usage**
-
-```bash
-getsheet chart --tab <name> --range <range> [--type <type>] [--title <title>]
-```
-
-| Flag | Type | Description | Required |
-|------|------|-------------|----------|
-| `--tab` | string | Tab containing the data | Yes |
-| `--range` | string | Data range, e.g. `A1:B5` | Yes |
-| `--type` | string | Chart type (default: COLUMN) | No |
-| `--title` | string | Chart title | No |
-
-**Chart Types**
-
-| Type | Description |
-|------|-------------|
-| `BAR` | Horizontal bar chart |
-| `LINE` | Line chart |
-| `PIE` | Pie chart |
-| `COLUMN` | Vertical column chart (default) |
-| `AREA` | Area chart |
-| `SCATTER` | Scatter plot |
-
-**Example**
-
-```bash
+# Create chart
 getsheet chart --tab Sheet1 --range A1:B4 --type BAR --title "Scores"
-```
-
-**Returns**
-
-```json
-{
-    "status": true,
-    "message": "BAR chart created from Sheet1!A1:B4",
-    "chartType": "BAR",
-    "dataRange": "Sheet1!A1:B4",
-    "title": "Scores"
-}
-```
-
-### `info`
-
-Show the service account email address and current configuration. Use this to find the email you need to share your spreadsheet with.
-
-**Usage**
-
-```bash
-getsheet info
-```
-
-**Returns**
-
-```json
-{
-    "status": true,
-    "clientEmail": "getsheet-agent@project.iam.gserviceaccount.com",
-    "projectId": "my-project-123",
-    "spreadsheet": "1dXXCi8Dc5ZiMh8IvwUlN08jBz-yCFczF_qpQ3wU3Kdw",
-    "shareInstructions": "Share your Google Sheet with: getsheet-agent@project.iam.gserviceaccount.com (Editor role)"
-}
 ```
 
 ## Configuration
 
 GetSheet uses a two-tier configuration:
 
-```mermaid
-flowchart LR
-    A["~/.gsheet/config.json<br/>(Global: credentials path)"] --> C[getsheet read/write/...]
-    B[".gsheet/config.json<br/>(Local: spreadsheet ID)"] --> C
+```
+~/.gsheet/config.json (Global: credentials path) ─┐
+                                                   ├─→ getsheet read/write/...
+.gsheet/config.json (Local: spreadsheet ID) ───────┘
 ```
 
 ### Global Config
@@ -421,14 +193,6 @@ Stored at `.gsheet/config.json` in your working directory. Created per project v
     "root": "~/.gsheet",
     "spreadsheet": "1dXXCi8Dc5ZiMh8IvwUlN08jBz-yCFczF_qpQ3wU3Kdw"
 }
-```
-
-### Adding `.gsheet/` to `.gitignore`
-
-The local config contains only the spreadsheet ID (no secrets), but you may want to add it to `.gitignore`:
-
-```
-.gsheet/
 ```
 
 ## License
